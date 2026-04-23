@@ -6,8 +6,7 @@ import os
 from datetime import datetime, date, timedelta
 import tkinter as tk
 from tkinter import *
-from tkinter import ttk, messagebox
-import random
+from tkinter import ttk
 
 # MySQL Configuration
 DB_CONFIG = {
@@ -18,38 +17,6 @@ DB_CONFIG = {
 }
 
 DATE_FORMAT = "%Y-%m-%d"
-
-# Categories with Icons
-EXPENSE_CATEGORIES = [
-    {"name": "Food", "icon": "🍔", "color": "#FF6B6B"},
-    {"name": "Transport", "icon": "🚗", "color": "#4ECDC4"},
-    {"name": "Shopping", "icon": "🛍️", "color": "#45B7D1"},
-    {"name": "Bills", "icon": "💸", "color": "#96CEB4"},
-    {"name": "Entertainment", "icon": "🎬", "color": "#FFEAA7"},
-    {"name": "Healthcare", "icon": "🏥", "color": "#DDA0DD"},
-    {"name": "Education", "icon": "📚", "color": "#98D8C8"},
-    {"name": "Other", "icon": "📦", "color": "#B0BEC5"}
-]
-
-INCOME_CATEGORIES = [
-    {"name": "Salary", "icon": "💰", "color": "#27ae60"},
-    {"name": "Freelance", "icon": "💻", "color": "#3498db"},
-    {"name": "Investment", "icon": "📈", "color": "#f39c12"},
-    {"name": "Gift", "icon": "🎁", "color": "#e74c3c"},
-    {"name": "Other", "icon": "📦", "color": "#95a5a6"}
-]
-
-# Motivational Quotes
-MOTIVATIONAL_QUOTES = [
-    "💰 Save money today for a better tomorrow!",
-    "🎯 Every penny saved is a step towards freedom!",
-    "📊 Track your expenses, track your success!",
-    "💪 Small savings today, big wealth tomorrow!",
-    "🌟 Financial freedom starts with one expense at a time!",
-    "🎉 Your future self will thank you for saving today!",
-    "💡 Smart spending = Smart saving!",
-    "🏆 You're doing great! Keep tracking your expenses!"
-]
 
 def get_db_connection():
     """Create and return a MySQL database connection"""
@@ -69,60 +36,15 @@ def init_database():
     try:
         cursor = connection.cursor()
         
-        # Create users table with additional fields
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                username VARCHAR(100) UNIQUE NOT NULL,
-                email VARCHAR(100) UNIQUE NOT NULL,
-                password VARCHAR(255) NOT NULL,
-                weekly_budget DECIMAL(10, 2) DEFAULT 0,
-                savings_goal DECIMAL(10, 2) DEFAULT 0,
-                theme VARCHAR(20) DEFAULT 'light',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Create expenses table with category
+        # Create expenses table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS expenses (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id INT NOT NULL,
                 description TEXT NOT NULL,
                 amount DECIMAL(10, 2) NOT NULL,
-                category VARCHAR(50) NOT NULL,
-                category_icon VARCHAR(10),
                 date TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Create income table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS incomes (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                description TEXT NOT NULL,
-                amount DECIMAL(10, 2) NOT NULL,
-                category VARCHAR(50) NOT NULL,
-                category_icon VARCHAR(10),
-                date TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Create budget settings table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS budget_settings (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                weekly_budget DECIMAL(10, 2) DEFAULT 0,
-                monthly_budget DECIMAL(10, 2) DEFAULT 0,
-                savings_goal DECIMAL(10, 2) DEFAULT 0,
-                savings_goal_name VARCHAR(200),
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
             )
         ''')
@@ -136,12 +58,7 @@ def init_database():
         connection.close()
 
 def hash_password(password: str) -> str:
-    """Hash password using SHA256"""
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify if plain password matches hashed password"""
-    return hash_password(plain_password) == hashed_password
 
 def get_user_by_username(username: str):
     """Get user from database by username"""
@@ -151,7 +68,7 @@ def get_user_by_username(username: str):
     
     try:
         cursor = connection.cursor()
-        cursor.execute("SELECT id, username, email, password, weekly_budget, savings_goal, theme FROM users WHERE username = %s", (username,))
+        cursor.execute("SELECT id, username, email, password FROM users WHERE username = %s", (username,))
         user = cursor.fetchone()
         return user
     except Error as e:
@@ -169,7 +86,7 @@ def get_user_by_email(email: str):
     
     try:
         cursor = connection.cursor()
-        cursor.execute("SELECT id, username, email, password, weekly_budget, savings_goal, theme FROM users WHERE email = %s", (email,))
+        cursor.execute("SELECT id, username, email, password FROM users WHERE email = %s", (email,))
         user = cursor.fetchone()
         return user
     except Error as e:
@@ -218,16 +135,6 @@ def register_user_db(username: str, email: str, password: str) -> bool:
             (username, email, hashed_password)
         )
         connection.commit()
-        
-        # Get the new user's ID
-        user_id = cursor.lastrowid
-        
-        # Create budget settings for new user
-        cursor.execute(
-            "INSERT INTO budget_settings (user_id) VALUES (%s)",
-            (user_id,)
-        )
-        connection.commit()
         return True
     except Error as e:
         print(f"Error registering user: {e}")
@@ -236,7 +143,7 @@ def register_user_db(username: str, email: str, password: str) -> bool:
         cursor.close()
         connection.close()
 
-def login_user_db(username_or_email: str, password: str):
+def login_user_db(username_or_email: str, password: str) -> tuple:
     """Authenticate user login by username or email"""
     # Try username first
     user = get_user_by_username(username_or_email)
@@ -246,11 +153,8 @@ def login_user_db(username_or_email: str, password: str):
         user = get_user_by_email(username_or_email)
     
     # Verify password
-    if user:
-        stored_password = user[3]  # password is at index 3
-        if verify_password(password, stored_password):
-            return (user[0], user[1], user[2])  # Return (id, username, email)
-    
+    if user and user[3] == hash_password(password):  # user[3] is password
+        return (user[0], user[1], user[2])  # Return (id, username, email)
     return None
 
 def get_user_expenses(user_id: int):
@@ -262,11 +166,11 @@ def get_user_expenses(user_id: int):
     try:
         cursor = connection.cursor()
         cursor.execute(
-            "SELECT id, description, amount, category, category_icon, date FROM expenses WHERE user_id = %s ORDER BY date DESC",
+            "SELECT id, description, amount, date FROM expenses WHERE user_id = %s ORDER BY date DESC",
             (user_id,)
         )
         expenses = cursor.fetchall()
-        return [{"id": e[0], "description": e[1], "amount": float(e[2]), "category": e[3], "icon": e[4], "date": e[5]} for e in expenses]
+        return [{"id": e[0], "description": e[1], "amount": float(e[2]), "date": e[3]} for e in expenses]
     except Error as e:
         print(f"Error fetching expenses: {e}")
         return []
@@ -274,28 +178,7 @@ def get_user_expenses(user_id: int):
         cursor.close()
         connection.close()
 
-def get_user_incomes(user_id: int):
-    """Get all incomes for a user"""
-    connection = get_db_connection()
-    if not connection:
-        return []
-    
-    try:
-        cursor = connection.cursor()
-        cursor.execute(
-            "SELECT id, description, amount, category, category_icon, date FROM incomes WHERE user_id = %s ORDER BY date DESC",
-            (user_id,)
-        )
-        incomes = cursor.fetchall()
-        return [{"id": i[0], "description": i[1], "amount": float(i[2]), "category": i[3], "icon": i[4], "date": i[5]} for i in incomes]
-    except Error as e:
-        print(f"Error fetching incomes: {e}")
-        return []
-    finally:
-        cursor.close()
-        connection.close()
-
-def add_expense_db(user_id: int, description: str, amount: float, category: str, category_icon: str, exp_date: str) -> bool:
+def add_expense_db(user_id: int, description: str, amount: float, exp_date: str) -> bool:
     """Add a new expense to the database"""
     connection = get_db_connection()
     if not connection:
@@ -304,34 +187,13 @@ def add_expense_db(user_id: int, description: str, amount: float, category: str,
     try:
         cursor = connection.cursor()
         cursor.execute(
-            "INSERT INTO expenses (user_id, description, amount, category, category_icon, date) VALUES (%s, %s, %s, %s, %s, %s)",
-            (user_id, description, round(amount, 2), category, category_icon, exp_date)
+            "INSERT INTO expenses (user_id, description, amount, date) VALUES (%s, %s, %s, %s)",
+            (user_id, description, round(amount, 2), exp_date)
         )
         connection.commit()
         return True
     except Error as e:
         print(f"Error adding expense: {e}")
-        return False
-    finally:
-        cursor.close()
-        connection.close()
-
-def add_income_db(user_id: int, description: str, amount: float, category: str, category_icon: str, inc_date: str) -> bool:
-    """Add a new income to the database"""
-    connection = get_db_connection()
-    if not connection:
-        return False
-    
-    try:
-        cursor = connection.cursor()
-        cursor.execute(
-            "INSERT INTO incomes (user_id, description, amount, category, category_icon, date) VALUES (%s, %s, %s, %s, %s, %s)",
-            (user_id, description, round(amount, 2), category, category_icon, inc_date)
-        )
-        connection.commit()
-        return True
-    except Error as e:
-        print(f"Error adding income: {e}")
         return False
     finally:
         cursor.close()
@@ -351,98 +213,6 @@ def delete_expense_db(expense_id: int) -> bool:
     except Error as e:
         print(f"Error deleting expense: {e}")
         return False
-    finally:
-        cursor.close()
-        connection.close()
-
-def delete_income_db(income_id: int) -> bool:
-    """Delete an income from the database"""
-    connection = get_db_connection()
-    if not connection:
-        return False
-    
-    try:
-        cursor = connection.cursor()
-        cursor.execute("DELETE FROM incomes WHERE id = %s", (income_id,))
-        connection.commit()
-        return True
-    except Error as e:
-        print(f"Error deleting income: {e}")
-        return False
-    finally:
-        cursor.close()
-        connection.close()
-
-def update_budget_settings(user_id: int, weekly_budget: float = None, monthly_budget: float = None, savings_goal: float = None, savings_goal_name: str = None):
-    """Update budget settings for user"""
-    connection = get_db_connection()
-    if not connection:
-        return False
-    
-    try:
-        cursor = connection.cursor()
-        
-        # Check if record exists
-        cursor.execute("SELECT id FROM budget_settings WHERE user_id = %s", (user_id,))
-        exists = cursor.fetchone()
-        
-        if exists:
-            updates = []
-            params = []
-            if weekly_budget is not None:
-                updates.append("weekly_budget = %s")
-                params.append(weekly_budget)
-            if monthly_budget is not None:
-                updates.append("monthly_budget = %s")
-                params.append(monthly_budget)
-            if savings_goal is not None:
-                updates.append("savings_goal = %s")
-                params.append(savings_goal)
-            if savings_goal_name is not None:
-                updates.append("savings_goal_name = %s")
-                params.append(savings_goal_name)
-            
-            if updates:
-                params.append(user_id)
-                cursor.execute(f"UPDATE budget_settings SET {', '.join(updates)} WHERE user_id = %s", params)
-        else:
-            cursor.execute(
-                "INSERT INTO budget_settings (user_id, weekly_budget, monthly_budget, savings_goal, savings_goal_name) VALUES (%s, %s, %s, %s, %s)",
-                (user_id, weekly_budget or 0, monthly_budget or 0, savings_goal or 0, savings_goal_name or "")
-            )
-        
-        # Also update users table for backward compatibility
-        if weekly_budget is not None:
-            cursor.execute("UPDATE users SET weekly_budget = %s WHERE id = %s", (weekly_budget, user_id))
-        if savings_goal is not None:
-            cursor.execute("UPDATE users SET savings_goal = %s WHERE id = %s", (savings_goal, user_id))
-        
-        connection.commit()
-        return True
-    except Error as e:
-        print(f"Error updating budget settings: {e}")
-        return False
-    finally:
-        cursor.close()
-        connection.close()
-
-def get_budget_settings(user_id: int):
-    """Get budget settings for user"""
-    connection = get_db_connection()
-    if not connection:
-        return {"weekly_budget": 0, "monthly_budget": 0, "savings_goal": 0, "savings_goal_name": ""}
-    
-    try:
-        cursor = connection.cursor()
-        cursor.execute("SELECT weekly_budget, monthly_budget, savings_goal, savings_goal_name FROM budget_settings WHERE user_id = %s", (user_id,))
-        result = cursor.fetchone()
-        if result:
-            return {"weekly_budget": float(result[0]), "monthly_budget": float(result[1]), 
-                    "savings_goal": float(result[2]), "savings_goal_name": result[3] or ""}
-        return {"weekly_budget": 0, "monthly_budget": 0, "savings_goal": 0, "savings_goal_name": ""}
-    except Error as e:
-        print(f"Error fetching budget settings: {e}")
-        return {"weekly_budget": 0, "monthly_budget": 0, "savings_goal": 0, "savings_goal_name": ""}
     finally:
         cursor.close()
         connection.close()
@@ -482,198 +252,47 @@ def filter_expenses(expenses, start_date: date, end_date: date):
             filtered.append(expense)
     return filtered
 
-def calculate_savings(expenses, incomes):
-    """Calculate total savings (income - expense)"""
-    total_income = sum(i["amount"] for i in incomes)
-    total_expense = sum(e["amount"] for e in expenses)
-    return total_income - total_expense
-
-def create_category_selection_dialog(parent, title, categories, callback):
-    """Create a dialog for category selection"""
-    dialog = Toplevel(parent)
-    dialog.title(title)
-    dialog.geometry("400x300")
-    dialog.transient(parent)
-    dialog.grab_set()
-    
-    Label(dialog, text="Select Category", font=("Arial", 14, "bold")).pack(pady=10)
-    
-    button_frame = Frame(dialog)
-    button_frame.pack(pady=20, padx=20)
-    
-    row = 0
-    col = 0
-    for cat in categories:
-        btn = Button(button_frame, text=f"{cat['icon']} {cat['name']}", 
-                    command=lambda c=cat: [callback(c), dialog.destroy()],
-                    font=("Arial", 10), bg="#e0e0e0", width=15, height=2)
-        btn.grid(row=row, column=col, padx=10, pady=10)
-        col += 1
-        if col > 2:
-            col = 0
-            row += 1
-    
-    Button(dialog, text="Cancel", command=dialog.destroy, bg="#e74c3c", fg="white").pack(pady=10)
-
 def show_menu(user_id: int, username: str, email: str):
     menu_root = Tk()
-    menu_root.title("Expense Tracker Pro")
-    menu_root.geometry("1200x800")
+    menu_root.title("Expense Tracker Dashboard")
+    menu_root.geometry("1000x700")
     menu_root.resizable(True, True)
     
-    # Theme variables
-    is_dark_mode = False
+    # Colors
+    PRIMARY_COLOR = "#3498db"
+    DANGER_COLOR = "#e74c3c"
+    SUCCESS_COLOR = "#27ae60"
+    HEADER_COLOR = "#2c3e50"
+    BG_COLOR = "#ecf0f1"
+    TEXT_COLOR = "#2c3e50"
     
-    # Colors for Light Mode
-    LIGHT_COLORS = {
-        'primary': "#3498db",
-        'danger': "#e74c3c",
-        'success': "#27ae60",
-        'warning': "#f39c12",
-        'header': "#2c3e50",
-        'bg': "#ecf0f1",
-        'card_bg': "#ffffff",
-        'text': "#2c3e50",
-        'text_secondary': "#7f8c8d",
-        'border': "#bdc3c7"
-    }
-    
-    # Colors for Dark Mode
-    DARK_COLORS = {
-        'primary': "#3498db",
-        'danger': "#e74c3c",
-        'success': "#27ae60",
-        'warning': "#f39c12",
-        'header': "#1a1a2e",
-        'bg': "#16213e",
-        'card_bg': "#0f3460",
-        'text': "#ecf0f1",
-        'text_secondary': "#bdc3c7",
-        'border': "#2c3e50"
-    }
-    
-    colors = LIGHT_COLORS
-    
-    def toggle_theme():
-        nonlocal is_dark_mode, colors
-        is_dark_mode = not is_dark_mode
-        colors = DARK_COLORS if is_dark_mode else LIGHT_COLORS
-        apply_theme()
-    
-    def apply_theme():
-        menu_root.config(bg=colors['bg'])
-        header_frame.config(bg=colors['header'])
-        header_title.config(bg=colors['header'], fg="white")
-        header_subtitle.config(bg=colors['header'], fg="lightgray")
-        main_container.config(bg=colors['bg'])
-        canvas.config(bg=colors['bg'])
-        scrollable_frame.config(bg=colors['bg'])
-        center_container.config(bg=colors['bg'])
-        content_wrapper.config(bg=colors['bg'])
-        stats_frame.config(bg=colors['bg'])
-        
-        # Update stat cards
-        for widget in stats_frame.winfo_children():
-            if isinstance(widget, Frame):
-                widget.config(bg=colors['card_bg'])
-                for child in widget.winfo_children():
-                    child.config(bg=colors['card_bg'])
-        
-        # Update other frames similarly
-        input_frame.config(bg=colors['card_bg'])
-        filter_frame.config(bg=colors['card_bg'])
-        table_frame.config(bg=colors['card_bg'])
-        action_frame.config(bg=colors['bg'])
-        quote_frame.config(bg=colors['card_bg'])
-        quote_label.config(bg=colors['card_bg'], fg=colors['primary'])
-    
-    # Get budget settings
-    budget_settings = get_budget_settings(user_id)
-    weekly_budget = budget_settings['weekly_budget']
-    savings_goal = budget_settings['savings_goal']
-    savings_goal_name = budget_settings['savings_goal_name']
-    
-    # Get current random quote
-    current_quote = random.choice(MOTIVATIONAL_QUOTES)
+    # Configure style
+    style = ttk.Style()
+    style.theme_use('clam')
     
     # Main background
-    menu_root.config(bg=colors['bg'])
+    menu_root.config(bg=BG_COLOR)
     
     # Header Frame
-    header_frame = Frame(menu_root, bg=colors['header'], height=80)
+    header_frame = Frame(menu_root, bg=HEADER_COLOR, height=80)
     header_frame.pack(fill=X)
     
-    header_top = Frame(header_frame, bg=colors['header'])
-    header_top.pack(fill=X, padx=20, pady=(10, 0))
+    header_title = Label(header_frame, text="💰 Expense Tracker", font=("Arial", 24, "bold"), 
+                        bg=HEADER_COLOR, fg="white")
+    header_title.pack(pady=(10, 0))
     
-    header_title = Label(header_top, text="💰 Expense Tracker Pro", font=("Arial", 24, "bold"), 
-                        bg=colors['header'], fg="white")
-    header_title.pack(side=LEFT)
-    
-    # Theme toggle button
-    theme_btn = Button(header_top, text="🌙 Dark Mode" if not is_dark_mode else "☀️ Light Mode", 
-                      command=toggle_theme, bg=colors['primary'], fg="white",
-                      font=("Arial", 10, "bold"), padx=15, pady=5, relief=FLAT, cursor="hand2")
-    theme_btn.pack(side=RIGHT)
-    
-    header_subtitle = Label(header_frame, text=f"Welcome, {username}! Track your finances like a pro", 
-                           font=("Arial", 11), bg=colors['header'], fg="lightgray")
-    header_subtitle.pack(pady=(5, 10))
-    
-    # Wallet/Balance Display
-    wallet_frame = Frame(header_frame, bg=colors['success'], height=60)
-    wallet_frame.pack(fill=X, pady=(0, 10))
-    
-    def update_wallet_display():
-        expenses = get_user_expenses(user_id)
-        incomes = get_user_incomes(user_id)
-        total_income = sum(i["amount"] for i in incomes)
-        total_expense = sum(e["amount"] for e in expenses)
-        balance = total_income - total_expense
-        
-        wallet_label.config(text=f"💰 Available Balance: ₱{balance:,.2f}")
-        
-        # Check budget alert
-        if weekly_budget > 0:
-            # Get current week expenses
-            today = date.today()
-            start, end = get_week_range(today)
-            week_expenses = filter_expenses(expenses, start, end)
-            week_total = sum(e["amount"] for e in week_expenses)
-            
-            if week_total > weekly_budget:
-                budget_warning.config(text=f"⚠️ WARNING: Weekly budget exceeded! (₱{week_total:.2f} / ₱{weekly_budget:.2f})", 
-                                     bg=colors['danger'], fg="white")
-                budget_warning.pack(fill=X, pady=(5, 0))
-            else:
-                budget_warning.config(text=f"📊 Weekly Budget: ₱{week_total:.2f} / ₱{weekly_budget:.2f} ({(week_total/weekly_budget)*100:.1f}%)",
-                                     bg=colors['primary'], fg="white")
-                budget_warning.pack(fill=X, pady=(5, 0))
-        
-        # Update savings goal progress
-        if savings_goal > 0:
-            savings_progress = (balance / savings_goal) * 100 if savings_goal > 0 else 0
-            if savings_progress < 0:
-                savings_progress = 0
-            savings_progress_bar['value'] = savings_progress
-            savings_label.config(text=f"🎯 {savings_goal_name if savings_goal_name else 'Savings Goal'}: ₱{balance:,.2f} / ₱{savings_goal:,.2f} ({savings_progress:.1f}%)")
-        
-        return balance
-    
-    wallet_label = Label(wallet_frame, text="💰 Available Balance: ₱0.00", 
-                        font=("Arial", 14, "bold"), bg=colors['success'], fg="white")
-    wallet_label.pack(pady=10)
-    
-    budget_warning = Label(wallet_frame, text="", font=("Arial", 10), bg=colors['success'])
+    header_subtitle = Label(header_frame, text=f"Welcome, {username}! Track your expenses easily", 
+                           font=("Arial", 11), bg=HEADER_COLOR, fg="lightgray")
+    header_subtitle.pack(pady=(0, 10))
     
     # Main content with scrollbar
-    main_container = Frame(menu_root, bg=colors['bg'])
+    main_container = Frame(menu_root, bg=BG_COLOR)
     main_container.pack(expand=True, fill=BOTH)
     
     # Create canvas for scrolling
-    canvas = Canvas(main_container, bg=colors['bg'], highlightthickness=0)
+    canvas = Canvas(main_container, bg=BG_COLOR, highlightthickness=0)
     scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
-    scrollable_frame = Frame(canvas, bg=colors['bg'])
+    scrollable_frame = Frame(canvas, bg=BG_COLOR)
 
     scrollable_frame.bind(
         "<Configure>",
@@ -692,367 +311,120 @@ def show_menu(user_id: int, username: str, email: str):
     canvas.bind_all("<MouseWheel>", _on_mousewheel)
     
     # Center the content
-    center_container = Frame(scrollable_frame, bg=colors['bg'])
+    center_container = Frame(scrollable_frame, bg=BG_COLOR)
     center_container.pack(expand=True, fill=BOTH)
     
     # Content wrapper with fixed width for centering
-    content_wrapper = Frame(center_container, bg=colors['bg'])
+    content_wrapper = Frame(center_container, bg=BG_COLOR)
     content_wrapper.pack(expand=True, fill=BOTH, padx=40, pady=20)
     
     # Stats Section
-    stats_frame = Frame(content_wrapper, bg=colors['bg'])
+    stats_frame = Frame(content_wrapper, bg=BG_COLOR)
     stats_frame.pack(fill=X, pady=15)
     
     def create_stat_card(parent, title, value_var, icon):
-        card = Frame(parent, bg=colors['card_bg'], relief=RAISED, bd=0)
+        card = Frame(parent, bg="white", relief=RAISED, bd=0)
         card.pack(side=LEFT, padx=10, fill=BOTH, expand=True)
         
-        icon_label = Label(card, text=icon, font=("Arial", 24), bg=colors['card_bg'])
+        icon_label = Label(card, text=icon, font=("Arial", 20), bg="white")
         icon_label.pack(pady=(10, 5))
         
-        title_label = Label(card, text=title, font=("Arial", 10), bg=colors['card_bg'], fg=colors['text_secondary'])
+        title_label = Label(card, text=title, font=("Arial", 10), bg="white", fg="gray")
         title_label.pack()
         
         value_label = Label(card, textvariable=value_var, font=("Arial", 16, "bold"), 
-                           bg=colors['card_bg'], fg=colors['primary'])
+                           bg="white", fg=PRIMARY_COLOR)
         value_label.pack(pady=(5, 10))
         
         return card
     
-    total_expense_var = StringVar(value="₱0.00")
-    total_income_var = StringVar(value="₱0.00")
-    savings_var = StringVar(value="₱0.00")
+    total_var = StringVar(value="₱0.00")
+    count_var = StringVar(value="0")
+    avg_var = StringVar(value="₱0.00")
     
-    create_stat_card(stats_frame, "Total Expenses", total_expense_var, "📊")
-    create_stat_card(stats_frame, "Total Income", total_income_var, "💰")
-    create_stat_card(stats_frame, "Savings", savings_var, "💎")
-    
-    # Savings Goal Progress
-    if savings_goal > 0:
-        savings_frame = Frame(content_wrapper, bg=colors['card_bg'], relief=RAISED, bd=1)
-        savings_frame.pack(fill=X, pady=15)
-        
-        savings_label = Label(savings_frame, text=f"🎯 {savings_goal_name}: Progress", 
-                             font=("Arial", 11, "bold"), bg=colors['card_bg'], fg=colors['text'])
-        savings_label.pack(anchor=W, padx=15, pady=(10, 5))
-        
-        savings_progress_bar = ttk.Progressbar(savings_frame, length=400, mode='determinate')
-        savings_progress_bar.pack(fill=X, padx=15, pady=5)
-        
-        savings_percent_label = Label(savings_frame, text="0%", font=("Arial", 9), 
-                                      bg=colors['card_bg'], fg=colors['text_secondary'])
-        savings_percent_label.pack(anchor=E, padx=15, pady=(0, 10))
-    
-    # Motivational Quote
-    quote_frame = Frame(content_wrapper, bg=colors['card_bg'], relief=RAISED, bd=1)
-    quote_frame.pack(fill=X, pady=15)
-    
-    quote_label = Label(quote_frame, text=f"💌 {current_quote}", font=("Arial", 10, "italic"), 
-                       bg=colors['card_bg'], fg=colors['primary'], pady=10)
-    quote_label.pack()
+    create_stat_card(stats_frame, "Total Spent", total_var, "📊")
+    create_stat_card(stats_frame, "Total Entries", count_var, "📝")
+    create_stat_card(stats_frame, "Average", avg_var, "📈")
     
     # Input Section
-    notebook = ttk.Notebook(content_wrapper)
-    notebook.pack(fill=X, pady=15)
+    input_frame = Frame(content_wrapper, bg="white", relief=RAISED, bd=1)
+    input_frame.pack(fill=X, pady=15)
     
-    # Expense Tab
-    expense_tab = Frame(notebook, bg=colors['bg'])
-    notebook.add(expense_tab, text="💸 Add Expense")
+    Label(input_frame, text="Add New Expense", font=("Arial", 12, "bold"), 
+         bg="white", fg=TEXT_COLOR).pack(anchor=W, padx=15, pady=(10, 0))
     
-    # Income Tab
-    income_tab = Frame(notebook, bg=colors['bg'])
-    notebook.add(income_tab, text="💰 Add Income")
+    input_inner = Frame(input_frame, bg="white")
+    input_inner.pack(fill=X, padx=15, pady=10)
     
-    # Settings Tab
-    settings_tab = Frame(notebook, bg=colors['bg'])
-    notebook.add(settings_tab, text="⚙️ Settings")
-    
-    # Expense Tab Content (simplified for brevity - similar to before)
-    expense_input_frame = Frame(expense_tab, bg=colors['card_bg'], relief=RAISED, bd=1)
-    expense_input_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
-    
-    Label(expense_input_frame, text="Add New Expense", font=("Arial", 12, "bold"), 
-         bg=colors['card_bg'], fg=colors['text']).pack(anchor=W, padx=15, pady=(10, 0))
-    
-    expense_inner = Frame(expense_input_frame, bg=colors['card_bg'])
-    expense_inner.pack(fill=X, padx=15, pady=10)
-    
-    # Category selection for expense
-    Label(expense_inner, text="Category:", bg=colors['card_bg'], fg=colors['text'], font=("Arial", 9)).pack(anchor=W)
-    expense_category_var = StringVar()
-    expense_category_icon_var = StringVar()
-    
-    def select_expense_category():
-        def on_category_selected(category):
-            expense_category_var.set(category['name'])
-            expense_category_icon_var.set(category['icon'])
-            expense_category_btn.config(text=f"{category['icon']} {category['name']}")
-        
-        create_category_selection_dialog(menu_root, "Select Expense Category", EXPENSE_CATEGORIES, on_category_selected)
-    
-    expense_category_btn = Button(expense_inner, text="📦 Select Category", command=select_expense_category,
-                                 bg=colors['primary'], fg="white", font=("Arial", 9), padx=10, pady=5)
-    expense_category_btn.pack(anchor=W, pady=(0, 10))
-    
-    Label(expense_inner, text="Description:", bg=colors['card_bg'], fg=colors['text'], font=("Arial", 9)).pack(anchor=W)
-    expense_description_var = StringVar()
-    Entry(expense_inner, textvariable=expense_description_var, font=("Arial", 10), 
+    Label(input_inner, text="Description:", bg="white", fg=TEXT_COLOR, font=("Arial", 9)).pack(anchor=W)
+    description_var = StringVar()
+    Entry(input_inner, textvariable=description_var, font=("Arial", 10), 
          bd=1, relief=SUNKEN).pack(fill=X, pady=(0, 10))
     
-    Label(expense_inner, text="Amount:", bg=colors['card_bg'], fg=colors['text'], font=("Arial", 9)).pack(anchor=W)
-    expense_amount_var = StringVar()
-    Entry(expense_inner, textvariable=expense_amount_var, font=("Arial", 10), 
+    Label(input_inner, text="Amount:", bg="white", fg=TEXT_COLOR, font=("Arial", 9)).pack(anchor=W)
+    amount_var = StringVar()
+    Entry(input_inner, textvariable=amount_var, font=("Arial", 10), 
          bd=1, relief=SUNKEN).pack(fill=X, pady=(0, 10))
     
-    Label(expense_inner, text="Date (YYYY-MM-DD):", bg=colors['card_bg'], fg=colors['text'], font=("Arial", 9)).pack(anchor=W)
-    expense_date_var = StringVar(value=date.today().strftime(DATE_FORMAT))
-    Entry(expense_inner, textvariable=expense_date_var, font=("Arial", 10), 
-         bd=1, relief=SUNKEN).pack(fill=X, pady=(0, 10))
-    
-    expense_status_var = StringVar()
+    status_var = StringVar()
     
     def add_expense_action():
-        description = expense_description_var.get().strip()
-        amount_str = expense_amount_var.get().strip()
-        category = expense_category_var.get()
-        category_icon = expense_category_icon_var.get()
-        exp_date = expense_date_var.get().strip()
-        
+        description = description_var.get().strip()
+        amount_str = amount_var.get().strip()
         if not description:
-            expense_status_var.set("❌ Description cannot be blank")
-            return
-        if not category:
-            expense_status_var.set("❌ Please select a category")
+            status_var.set("❌ Description cannot be blank")
             return
         try:
             amount = float(amount_str)
             if amount <= 0:
                 raise ValueError
         except ValueError:
-            expense_status_var.set("❌ Amount must be a positive number")
+            status_var.set("❌ Amount must be a positive number")
             return
         
-        if add_expense_db(user_id, description, amount, category, category_icon, exp_date):
-            expense_status_var.set("✅ Expense added successfully!")
-            expense_description_var.set("")
-            expense_amount_var.set("")
-            expense_category_var.set("")
-            expense_category_icon_var.set("")
-            expense_category_btn.config(text="📦 Select Category")
+        if add_expense_db(user_id, description, amount, date.today().strftime(DATE_FORMAT)):
+            status_var.set("✅ Expense added successfully!")
+            description_var.set("")
+            amount_var.set("")
             update_display()
-            update_wallet_display()
         else:
-            expense_status_var.set("❌ Failed to add expense")
+            status_var.set("❌ Failed to add expense")
     
-    expense_btn_frame = Frame(expense_inner, bg=colors['card_bg'])
-    expense_btn_frame.pack(fill=X, pady=(10, 0))
+    btn_frame = Frame(input_inner, bg="white")
+    btn_frame.pack(fill=X)
     
-    expense_add_btn = Button(expense_btn_frame, text="➕ Add Expense", command=add_expense_action, 
-                            bg=colors['primary'], fg="white", font=("Arial", 10, "bold"), 
-                            padx=20, pady=8, relief=FLAT, cursor="hand2")
-    expense_add_btn.pack(side=LEFT, padx=(0, 10))
+    add_btn = Button(btn_frame, text="➕ Add Expense", command=add_expense_action, 
+                    bg=PRIMARY_COLOR, fg="white", font=("Arial", 10, "bold"), 
+                    padx=20, pady=8, relief=FLAT, cursor="hand2")
+    add_btn.pack(side=LEFT, padx=(0, 10))
     
-    expense_status_label = Label(expense_btn_frame, textvariable=expense_status_var, bg=colors['card_bg'], 
-                                fg=colors['success'], font=("Arial", 9))
-    expense_status_label.pack(side=LEFT)
-    
-    # Income Tab Content (similar structure - simplified)
-    income_input_frame = Frame(income_tab, bg=colors['card_bg'], relief=RAISED, bd=1)
-    income_input_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
-    
-    Label(income_input_frame, text="Add New Income", font=("Arial", 12, "bold"), 
-         bg=colors['card_bg'], fg=colors['text']).pack(anchor=W, padx=15, pady=(10, 0))
-    
-    income_inner = Frame(income_input_frame, bg=colors['card_bg'])
-    income_inner.pack(fill=X, padx=15, pady=10)
-    
-    # Category selection for income
-    Label(income_inner, text="Category:", bg=colors['card_bg'], fg=colors['text'], font=("Arial", 9)).pack(anchor=W)
-    income_category_var = StringVar()
-    income_category_icon_var = StringVar()
-    
-    def select_income_category():
-        def on_category_selected(category):
-            income_category_var.set(category['name'])
-            income_category_icon_var.set(category['icon'])
-            income_category_btn.config(text=f"{category['icon']} {category['name']}")
-        
-        create_category_selection_dialog(menu_root, "Select Income Category", INCOME_CATEGORIES, on_category_selected)
-    
-    income_category_btn = Button(income_inner, text="📦 Select Category", command=select_income_category,
-                                bg=colors['primary'], fg="white", font=("Arial", 9), padx=10, pady=5)
-    income_category_btn.pack(anchor=W, pady=(0, 10))
-    
-    Label(income_inner, text="Description:", bg=colors['card_bg'], fg=colors['text'], font=("Arial", 9)).pack(anchor=W)
-    income_description_var = StringVar()
-    Entry(income_inner, textvariable=income_description_var, font=("Arial", 10), 
-         bd=1, relief=SUNKEN).pack(fill=X, pady=(0, 10))
-    
-    Label(income_inner, text="Amount:", bg=colors['card_bg'], fg=colors['text'], font=("Arial", 9)).pack(anchor=W)
-    income_amount_var = StringVar()
-    Entry(income_inner, textvariable=income_amount_var, font=("Arial", 10), 
-         bd=1, relief=SUNKEN).pack(fill=X, pady=(0, 10))
-    
-    Label(income_inner, text="Date (YYYY-MM-DD):", bg=colors['card_bg'], fg=colors['text'], font=("Arial", 9)).pack(anchor=W)
-    income_date_var = StringVar(value=date.today().strftime(DATE_FORMAT))
-    Entry(income_inner, textvariable=income_date_var, font=("Arial", 10), 
-         bd=1, relief=SUNKEN).pack(fill=X, pady=(0, 10))
-    
-    income_status_var = StringVar()
-    
-    def add_income_action():
-        description = income_description_var.get().strip()
-        amount_str = income_amount_var.get().strip()
-        category = income_category_var.get()
-        category_icon = income_category_icon_var.get()
-        inc_date = income_date_var.get().strip()
-        
-        if not description:
-            income_status_var.set("❌ Description cannot be blank")
-            return
-        if not category:
-            income_status_var.set("❌ Please select a category")
-            return
-        try:
-            amount = float(amount_str)
-            if amount <= 0:
-                raise ValueError
-        except ValueError:
-            income_status_var.set("❌ Amount must be a positive number")
-            return
-        
-        if add_income_db(user_id, description, amount, category, category_icon, inc_date):
-            income_status_var.set("✅ Income added successfully!")
-            income_description_var.set("")
-            income_amount_var.set("")
-            income_category_var.set("")
-            income_category_icon_var.set("")
-            income_category_btn.config(text="📦 Select Category")
-            update_display()
-            update_wallet_display()
-        else:
-            income_status_var.set("❌ Failed to add income")
-    
-    income_btn_frame = Frame(income_inner, bg=colors['card_bg'])
-    income_btn_frame.pack(fill=X, pady=(10, 0))
-    
-    income_add_btn = Button(income_btn_frame, text="➕ Add Income", command=add_income_action, 
-                           bg=colors['success'], fg="white", font=("Arial", 10, "bold"), 
-                           padx=20, pady=8, relief=FLAT, cursor="hand2")
-    income_add_btn.pack(side=LEFT, padx=(0, 10))
-    
-    income_status_label = Label(income_btn_frame, textvariable=income_status_var, bg=colors['card_bg'], 
-                               fg=colors['success'], font=("Arial", 9))
-    income_status_label.pack(side=LEFT)
-    
-    # Settings Tab Content
-    settings_frame = Frame(settings_tab, bg=colors['card_bg'], relief=RAISED, bd=1)
-    settings_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
-    
-    Label(settings_frame, text="Budget & Goals Settings", font=("Arial", 14, "bold"), 
-         bg=colors['card_bg'], fg=colors['text']).pack(anchor=W, padx=15, pady=(15, 5))
-    
-    settings_inner = Frame(settings_frame, bg=colors['card_bg'])
-    settings_inner.pack(fill=X, padx=15, pady=10)
-    
-    Label(settings_inner, text="Weekly Budget Limit:", bg=colors['card_bg'], fg=colors['text']).pack(anchor=W, pady=(10, 0))
-    weekly_budget_var = StringVar(value=str(weekly_budget) if weekly_budget > 0 else "")
-    Entry(settings_inner, textvariable=weekly_budget_var, font=("Arial", 10), width=20).pack(anchor=W, pady=(0, 10))
-    
-    Label(settings_inner, text="Savings Goal Name:", bg=colors['card_bg'], fg=colors['text']).pack(anchor=W, pady=(10, 0))
-    savings_goal_name_var = StringVar(value=savings_goal_name)
-    Entry(settings_inner, textvariable=savings_goal_name_var, font=("Arial", 10), width=30).pack(anchor=W, pady=(0, 10))
-    
-    Label(settings_inner, text="Savings Goal Amount:", bg=colors['card_bg'], fg=colors['text']).pack(anchor=W, pady=(10, 0))
-    savings_goal_var = StringVar(value=str(savings_goal) if savings_goal > 0 else "")
-    Entry(settings_inner, textvariable=savings_goal_var, font=("Arial", 10), width=20).pack(anchor=W, pady=(0, 10))
-    
-    settings_status_var = StringVar()
-    
-    def save_settings():
-        weekly = float(weekly_budget_var.get()) if weekly_budget_var.get().strip() else 0
-        savings = float(savings_goal_var.get()) if savings_goal_var.get().strip() else 0
-        savings_name = savings_goal_name_var.get().strip()
-        
-        if update_budget_settings(user_id, weekly_budget=weekly, savings_goal=savings, savings_goal_name=savings_name):
-            settings_status_var.set("✅ Settings saved successfully!")
-            messagebox.showinfo("Success", "Budget settings updated!")
-        else:
-            settings_status_var.set("❌ Failed to save settings")
-    
-    save_btn = Button(settings_inner, text="💾 Save Settings", command=save_settings,
-                     bg=colors['success'], fg="white", font=("Arial", 10, "bold"),
-                     padx=20, pady=8, relief=FLAT, cursor="hand2")
-    save_btn.pack(anchor=W, pady=(10, 10))
-    
-    settings_status_label = Label(settings_inner, textvariable=settings_status_var, bg=colors['card_bg'], 
-                                 fg=colors['success'], font=("Arial", 9))
-    settings_status_label.pack(anchor=W)
+    status_label = Label(btn_frame, textvariable=status_var, bg="white", 
+                        fg=SUCCESS_COLOR, font=("Arial", 9))
+    status_label.pack(side=LEFT)
     
     # Filter Buttons
-    filter_frame = Frame(content_wrapper, bg=colors['card_bg'], relief=RAISED, bd=1)
+    filter_frame = Frame(content_wrapper, bg="white", relief=RAISED, bd=1)
     filter_frame.pack(fill=X, pady=15)
     
     Label(filter_frame, text="Filter by Period", font=("Arial", 12, "bold"), 
-         bg=colors['card_bg'], fg=colors['text']).pack(anchor=W, padx=15, pady=(10, 0))
+         bg="white", fg=TEXT_COLOR).pack(anchor=W, padx=15, pady=(10, 0))
     
-    button_container = Frame(filter_frame, bg=colors['card_bg'])
+    button_container = Frame(filter_frame, bg="white")
     button_container.pack(fill=X, padx=15, pady=10)
     
-    # Search Section
-    search_frame = Frame(content_wrapper, bg=colors['card_bg'], relief=RAISED, bd=1)
-    search_frame.pack(fill=X, pady=15)
-    
-    Label(search_frame, text="🔍 Search Expenses", font=("Arial", 12, "bold"), 
-         bg=colors['card_bg'], fg=colors['text']).pack(anchor=W, padx=15, pady=(10, 0))
-    
-    search_inner = Frame(search_frame, bg=colors['card_bg'])
-    search_inner.pack(fill=X, padx=15, pady=10)
-    
-    search_var = StringVar()
-    search_entry = Entry(search_inner, textvariable=search_var, font=("Arial", 10), width=30)
-    search_entry.pack(side=LEFT, padx=(0, 10))
-    
-    def search_expenses():
-        search_term = search_var.get().lower()
-        for item in expense_table.get_children():
-            values = expense_table.item(item)['values']
-            if len(values) >= 3 and search_term in str(values[2]).lower():
-                expense_table.selection_set(item)
-                expense_table.see(item)
-            else:
-                expense_table.selection_remove(item)
-    
-    search_btn = Button(search_inner, text="Search", command=search_expenses,
-                       bg=colors['primary'], fg="white", font=("Arial", 9),
-                       padx=15, pady=5, relief=FLAT, cursor="hand2")
-    search_btn.pack(side=LEFT)
-    
-    current_filter = {"period": "all", "type": "expenses"}
+    current_filter = {"period": "all"}
     
     def filter_by_period(period):
         current_filter["period"] = period
         update_period_buttons()
         update_display()
     
-    def filter_by_type(record_type):
-        current_filter["type"] = record_type
-        update_type_buttons()
-        update_display()
-    
     def update_period_buttons():
         for btn in period_buttons:
             if btn.period == current_filter["period"]:
-                btn.config(bg=colors['primary'], fg="white")
+                btn.config(bg=PRIMARY_COLOR, fg="white")
             else:
-                btn.config(bg=colors['card_bg'], fg=colors['primary'], bd=1, relief=SUNKEN)
-    
-    def update_type_buttons():
-        for btn in type_buttons:
-            if btn.type == current_filter["type"]:
-                btn.config(bg=colors['primary'], fg="white")
-            else:
-                btn.config(bg=colors['card_bg'], fg=colors['primary'], bd=1, relief=SUNKEN)
+                btn.config(bg="white", fg=PRIMARY_COLOR, bd=1, relief=SUNKEN)
     
     period_buttons = []
     for period_name, period_key in [("All Time", "all"), ("This Week", "week"), 
@@ -1066,36 +438,22 @@ def show_menu(user_id: int, username: str, email: str):
     
     update_period_buttons()
     
-    # Type filter buttons
-    type_container = Frame(filter_frame, bg=colors['card_bg'])
-    type_container.pack(fill=X, padx=15, pady=(0, 10))
-    
-    type_buttons = []
-    for type_name, type_key in [("💸 Expenses", "expenses"), ("💰 Incomes", "incomes")]:
-        btn = Button(type_container, text=type_name, command=lambda t=type_key: filter_by_type(t),
-                    font=("Arial", 9, "bold"), padx=12, pady=6, relief=FLAT, cursor="hand2")
-        btn.pack(side=LEFT, padx=5)
-        btn.type = type_key
-        type_buttons.append(btn)
-    
-    update_type_buttons()
-    
-    # Records Table
-    table_frame = Frame(content_wrapper, bg=colors['card_bg'], relief=RAISED, bd=1)
+    # Expenses Table
+    table_frame = Frame(content_wrapper, bg="white", relief=RAISED, bd=1)
     table_frame.pack(fill=BOTH, expand=True, pady=15)
     
-    Label(table_frame, text="Your Records", font=("Arial", 12, "bold"), 
-         bg=colors['card_bg'], fg=colors['text']).pack(anchor=W, padx=15, pady=(10, 0))
+    Label(table_frame, text="Your Expenses", font=("Arial", 12, "bold"), 
+         bg="white", fg=TEXT_COLOR).pack(anchor=W, padx=15, pady=(10, 0))
     
-    table_container = Frame(table_frame, bg=colors['card_bg'])
+    table_container = Frame(table_frame, bg="white")
     table_container.pack(fill=BOTH, expand=True, padx=15, pady=10)
     
-    columns = ("Date", "Category", "Description", "Amount", "Action")
+    columns = ("Date", "Description", "Amount", "Action")
     expense_table = ttk.Treeview(table_container, columns=columns, height=12, show="headings")
     
     for col in columns:
         expense_table.heading(col, text=col)
-        expense_table.column(col, width=150 if col != "Description" else 200)
+        expense_table.column(col, width=150 if col != "Amount" else 100)
     
     scrollbar_table = ttk.Scrollbar(table_container, orient=VERTICAL, command=expense_table.yview)
     expense_table.configure(yscroll=scrollbar_table.set)
@@ -1103,74 +461,52 @@ def show_menu(user_id: int, username: str, email: str):
     expense_table.pack(side=LEFT, fill=BOTH, expand=True)
     scrollbar_table.pack(side=RIGHT, fill=Y)
     
-    def get_filtered_records():
+    def get_filtered_expenses():
         expenses = get_user_expenses(user_id)
-        incomes = get_user_incomes(user_id)
         today = date.today()
-        
-        if current_filter["type"] == "expenses":
-            records = expenses
-        else:
-            records = incomes
         
         if current_filter["period"] == "week":
             start, end = get_week_range(today)
-            return [r for r in records if parse_date(r["date"]) >= start]
+            return [e for e in expenses if parse_date(e["date"]) >= start]
         elif current_filter["period"] == "month":
             start, end = get_month_range(today)
-            return [r for r in records if parse_date(r["date"]) >= start]
+            return [e for e in expenses if parse_date(e["date"]) >= start]
         elif current_filter["period"] == "lastweek":
             start, end = get_week_range(today)
             start = start - timedelta(days=7)
             end = start + timedelta(days=6)
-            return [r for r in records if start <= parse_date(r["date"]) <= end]
+            return [e for e in expenses if start <= parse_date(e["date"]) <= end]
         elif current_filter["period"] == "lastmonth":
             start, end = get_last_month_range(today)
-            return [r for r in records if start <= parse_date(r["date"]) <= end]
+            return [e for e in expenses if start <= parse_date(e["date"]) <= end]
         else:
-            return records
+            return expenses
     
     def update_display():
         for item in expense_table.get_children():
             expense_table.delete(item)
         
-        records = get_filtered_records()
+        expenses = get_filtered_expenses()
         
-        if not records:
-            expense_table.insert("", END, values=("No records", "found for this period", "", "", ""))
+        if not expenses:
+            expense_table.insert("", END, values=("No expenses", "found for this period", "", ""))
         else:
-            for record in sorted(records, key=lambda x: x["date"], reverse=True):
-                icon = record.get("icon", "📦")
-                category = record.get("category", "Other")
-                amount = record["amount"]
-                amount_str = f"₱{amount:.2f}"
-                
+            for i, exp in enumerate(sorted(expenses, key=lambda x: x["date"], reverse=True)):
                 expense_table.insert("", END, values=(
-                    record["date"],
-                    f"{icon} {category}",
-                    record["description"],
-                    amount_str,
+                    exp["date"],
+                    exp["description"],
+                    f"₱{exp['amount']:.2f}",
                     "🗑️ Delete"
-                ), iid=f"{current_filter['type']}_{record['id']}")
+                ), iid=exp["id"])
         
         # Update stats
-        expenses = get_user_expenses(user_id)
-        incomes = get_user_incomes(user_id)
-        total_expense = sum(e["amount"] for e in expenses)
-        total_income = sum(i["amount"] for i in incomes)
-        savings = total_income - total_expense
+        total = sum(e["amount"] for e in expenses)
+        count = len(expenses)
+        avg = total / count if count > 0 else 0
         
-        total_expense_var.set(f"₱{total_expense:.2f}")
-        total_income_var.set(f"₱{total_income:.2f}")
-        savings_var.set(f"₱{savings:.2f}")
-        
-        # Update savings progress
-        if savings_goal > 0:
-            progress = (savings / savings_goal) * 100 if savings_goal > 0 else 0
-            if progress < 0:
-                progress = 0
-            savings_progress_bar['value'] = progress
-            savings_percent_label.config(text=f"{progress:.1f}%")
+        total_var.set(f"₱{total:.2f}")
+        count_var.set(str(count))
+        avg_var.set(f"₱{avg:.2f}")
     
     def on_table_click(event):
         selection = expense_table.selection()
@@ -1178,47 +514,27 @@ def show_menu(user_id: int, username: str, email: str):
             return
         
         col = expense_table.identify_column(event.x)
-        if col == "#5":  # Action column
+        if col == "#4":  # Action column
             item_id = selection[0]
-            record_type, record_id = item_id.split("_")
-            
-            if record_type == "expenses":
-                if delete_expense_db(int(record_id)):
-                    update_display()
-                    update_wallet_display()
-            else:
-                if delete_income_db(int(record_id)):
-                    update_display()
-                    update_wallet_display()
+            if delete_expense_db(int(item_id)):
+                update_display()
     
     expense_table.bind("<Button-1>", on_table_click)
     
     # Action Buttons
-    action_frame = Frame(content_wrapper, bg=colors['bg'])
+    action_frame = Frame(content_wrapper, bg=BG_COLOR)
     action_frame.pack(fill=X, pady=15)
     
-    def refresh_data():
-        update_display()
-        update_wallet_display()
-        messagebox.showinfo("Refresh", "Data refreshed successfully!")
-    
-    refresh_btn = Button(action_frame, text="🔄 Refresh", command=refresh_data,
-                        bg=colors['primary'], fg="white", font=("Arial", 10, "bold"),
-                        padx=20, pady=8, relief=FLAT, cursor="hand2")
-    refresh_btn.pack(side=LEFT, padx=(0, 10))
-    
     def logout_action():
-        if messagebox.askyesno("Logout", "Are you sure you want to logout?"):
-            menu_root.destroy()
+        menu_root.destroy()
     
     logout_btn = Button(action_frame, text="🚪 Logout", command=logout_action,
-                       bg=colors['danger'], fg="white", font=("Arial", 10, "bold"),
+                       bg=DANGER_COLOR, fg="white", font=("Arial", 10, "bold"),
                        padx=20, pady=8, relief=FLAT, cursor="hand2")
     logout_btn.pack(side=RIGHT)
     
     # Initialize display
     update_display()
-    update_wallet_display()
     menu_root.mainloop()
 
 def run_login_gui():
@@ -1228,7 +544,7 @@ def run_login_gui():
     login_result = {"user_id": None, "username": None, "email": None}
 
     root = Tk()
-    root.title("💰 Expense Tracker Pro - Login")
+    root.title("💰 Expense Tracker - Login")
     root.geometry("600x700")
     root.minsize(400, 500)
     root.resizable(True, True)
@@ -1306,11 +622,6 @@ def run_login_gui():
     def handle_login():
         username = username_var.get().strip()
         password = password_var.get()
-        
-        if not username or not password:
-            status_var.set("❌ Please enter username/email and password")
-            return
-            
         result = login_user_db(username, password)
         if result:
             login_result["user_id"] = result[0]
@@ -1318,18 +629,13 @@ def run_login_gui():
             login_result["email"] = result[2]
             root.destroy()
         else:
-            status_var.set("❌ Invalid username/email or password")
-            # Clear password field
-            password_var.set("")
-            password_entry.focus()
+            status_var.set("❌ Invalid username or password")
+            status_label.after(4000, lambda: status_var.set(""))
 
     login_btn = Button(button_frame, text="🔓  LOGIN", command=handle_login,
                       bg=PRIMARY, fg="white", font=("Segoe UI", 11, "bold"),
                       padx=20, pady=10, relief=FLAT, cursor="hand2", bd=0)
     login_btn.pack(fill=X)
-
-    # Bind Enter key to login
-    root.bind('<Return>', lambda event: handle_login())
 
     # Register Section
     register_frame = Frame(center_frame, bg=BG_LIGHT)
@@ -1341,7 +647,7 @@ def run_login_gui():
 
     def open_register():
         register_window = Toplevel(root)
-        register_window.title("💰 Expense Tracker Pro - Register")
+        register_window.title("💰 Expense Tracker - Register")
         register_window.geometry("500x700")
         register_window.minsize(400, 600)
         register_window.resizable(True, True)
@@ -1373,9 +679,17 @@ def run_login_gui():
         reg_form_inner = Frame(reg_form_card, bg=CARD_BG)
         reg_form_inner.pack(fill=BOTH, padx=20, pady=20)
 
+        # ID
+        Label(reg_form_inner, text="ID", font=("Segoe UI", 10, "bold"), 
+             bg=CARD_BG, fg=PRIMARY_DARK).pack(anchor=W, pady=(0, 5))
+        reg_id_var = StringVar()
+        reg_id_entry = Entry(reg_form_inner, textvariable=reg_id_var, 
+                            font=("Segoe UI", 11), bd=1, relief=SUNKEN)
+        reg_id_entry.pack(fill=X, ipady=8)
+
         # Username
         Label(reg_form_inner, text="Username", font=("Segoe UI", 10, "bold"), 
-             bg=CARD_BG, fg=PRIMARY_DARK).pack(anchor=W, pady=(0, 5))
+             bg=CARD_BG, fg=PRIMARY_DARK).pack(anchor=W, pady=(15, 5))
         reg_username_var = StringVar()
         reg_username_entry = Entry(reg_form_inner, textvariable=reg_username_var, 
                                   font=("Segoe UI", 11), bd=1, relief=SUNKEN)
@@ -1416,6 +730,7 @@ def run_login_gui():
         reg_btn_frame.pack(fill=X, pady=(20, 0))
 
         def handle_register():
+            id_value = reg_id_var.get().strip()
             username = reg_username_var.get().strip()
             email = reg_email_var.get().strip()
             password = reg_password_var.get()
@@ -1423,39 +738,41 @@ def run_login_gui():
             
             if not username:
                 reg_status_var.set("❌ Username cannot be blank")
+                reg_status_label.after(3000, lambda: reg_status_var.set(""))
                 return
             if not email:
                 reg_status_var.set("❌ Email cannot be blank")
+                reg_status_label.after(3000, lambda: reg_status_var.set(""))
                 return
             if "@" not in email or "." not in email:
                 reg_status_var.set("❌ Invalid email format")
+                reg_status_label.after(3000, lambda: reg_status_var.set(""))
                 return
             if len(password) < 6:
                 reg_status_var.set("❌ Password must be at least 6 characters")
+                reg_status_label.after(3000, lambda: reg_status_var.set(""))
                 return
             if password != confirm:
                 reg_status_var.set("❌ Passwords do not match")
+                reg_status_label.after(3000, lambda: reg_status_var.set(""))
                 return
             
             if user_exists(username, email):
                 reg_status_var.set("❌ Username or email already exists")
+                reg_status_label.after(3000, lambda: reg_status_var.set(""))
                 return
             
             if register_user_db(username, email, password):
-                reg_status_var.set("✅ Registration successful! Redirecting to login...")
-                reg_status_label.config(fg="green")
-                # Close registration window after 2 seconds
+                reg_status_var.set("✅ Registration successful! Closing...")
                 register_window.after(2000, register_window.destroy)
             else:
                 reg_status_var.set("❌ Registration failed. Please try again.")
+                reg_status_label.after(3000, lambda: reg_status_var.set(""))
 
         reg_submit_btn = Button(reg_btn_frame, text="✓  REGISTER", command=handle_register,
                                bg=PRIMARY, fg="white", font=("Segoe UI", 11, "bold"),
                                padx=20, pady=10, relief=FLAT, cursor="hand2", bd=0)
         reg_submit_btn.pack(fill=X)
-        
-        # Bind Enter key to register
-        register_window.bind('<Return>', lambda event: handle_register())
 
     register_btn = Button(register_frame, text="📝  SIGN UP", command=open_register,
                          bg=PRIMARY, fg="white", font=("Segoe UI", 10, "bold"),
